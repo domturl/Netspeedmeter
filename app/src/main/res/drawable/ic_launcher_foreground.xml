@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Left Arrow: Downward (Emerald Green, representing Download Speed) -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M34,28h8v30h8L38,74L26,58h8Z" />
+
+    <!-- Right Arrow: Upward (Electric Indigo, representing Upload Speed) -->
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M66,80h8V50h8L70,34L58,50h8Z" />
+        
+</vector>
