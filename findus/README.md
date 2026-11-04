@@ -28,8 +28,12 @@ A small Android app for two people to see each other on one map.
    needed).
 2. **Add app → Android**, package name **`app.findus`**. Download **`google-services.json`** and
    put it in `findus/app/google-services.json`. It's git-ignored, so it won't be committed.
-3. **Build → Authentication → Get started → Sign-in method → Anonymous → Enable.**
-4. **Build → Firestore Database → Create database** (pick a location near you, start in
+3. Turn on anonymous sign-in. Open
+   <https://console.firebase.google.com/project/_/authentication/providers> (or type
+   "Authentication" in the console's search box), click **Get started** if asked, then
+   **Anonymous → Enable → Save**.
+4. Create the database. Open <https://console.firebase.google.com/project/_/firestore> (or search
+   for "Firestore"), click **Create database** (pick a location near you, start in
    *production mode*).
 5. In Firestore, open the **Rules** tab, replace everything with the contents of
    [`firebase/firestore.rules`](firebase/firestore.rules), and click **Publish**.
@@ -40,7 +44,7 @@ A small Android app for two people to see each other on one map.
 1. In Android Studio choose **File → Open** and select the `findus` folder.
 2. Plug in a phone with [USB debugging](https://developer.android.com/studio/debug/dev-options)
    on and press **Run ▶**. Do the same for the second phone.
-   You can also use **Build → Build APK(s)** and send the APK to the other phone to install.
+   You can also use Android Studio's **Build → Build APK(s)** menu and send the APK to the other phone to install.
 
 ### 3. Pair your phones
 
