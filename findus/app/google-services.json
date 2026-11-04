@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1039521191108",
+    "project_id": "findus-553c3",
+    "storage_bucket": "findus-553c3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1039521191108:android:e3cdf72cd0a8e290fce591",
+        "android_client_info": {
+          "package_name": "app.findus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDulR-VrrpSnKWgS687vXvVvwH6EsP196k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
