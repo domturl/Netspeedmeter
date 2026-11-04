@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Find Us</string>
+    <string name="channel_name">Location sharing</string>
+    <string name="notification_title">Sharing your location</string>
+    <string name="notification_text">Only your partner can see it. Tap to open the map.</string>
+    <string name="stop_sharing">Stop sharing</string>
+</resources>

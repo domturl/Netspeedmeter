@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// Find Us — only the two phones in a pair can read or write that pair's data.
+// Locations are additionally end-to-end encrypted on the phones, so even someone with
+// database access only sees ciphertext.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function pairPath(pairId) { return /databases/$(database)/documents/pairs/$(pairId); }
+    function isMember(pairId) {
+      return signedIn() && request.auth.uid in get(pairPath(pairId)).data.members;
+    }
+
+    match /pairs/{pairId} {
+      // Start a pair with only yourself in it.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['members', 'createdAt'])
+        && request.resource.data.members == [request.auth.uid];
+
+      // Members can read their own pair. Nobody can list pairs.
+      allow get: if signedIn() && request.auth.uid in resource.data.members;
+      allow list: if false;
+
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+        && (
+          // Join: only the second person, only once — the pair then locks at two.
+          (resource.data.members.size() == 1
+            && !(request.auth.uid in resource.data.members)
+            && request.resource.data.members == resource.data.members.concat([request.auth.uid]))
+          ||
+          // Leave: a member may remove themself.
+          (request.auth.uid in resource.data.members
+            && request.resource.data.members == resource.data.members.removeAll([request.auth.uid]))
+        );
+
+      allow delete: if false;
+
+      match /locations/{uid} {
+        allow read: if isMember(pairId);
+        // You can only write/delete your own location, and only encrypted fields.
+        allow create, update: if isMember(pairId)
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['iv', 'ct', 'updatedAt'])
+          && request.resource.data.iv is string && request.resource.data.iv.size() < 64
+          && request.resource.data.ct is string && request.resource.data.ct.size() < 2048;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
