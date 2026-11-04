@@ -6,9 +6,15 @@ import android.content.SharedPreferences
 class SettingsManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("overlay_settings", Context.MODE_PRIVATE)
 
-    var overlayEnabled: Boolean
+    /** Whether the speed monitor (status bar indicator) should be running. */
+    var monitorEnabled: Boolean
         get() = prefs.getBoolean("overlay_enabled", false)
         set(value) = prefs.edit().putBoolean("overlay_enabled", value).apply()
+
+    /** Optional draggable floating pill on top of other apps (needs "Display over other apps"). */
+    var floatingOverlayEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FLOATING_OVERLAY, false)
+        set(value) = prefs.edit().putBoolean(KEY_FLOATING_OVERLAY, value).apply()
 
     var compactMode: Boolean
         get() = prefs.getBoolean("compact_mode", true)
@@ -53,6 +59,10 @@ class SettingsManager(context: Context) {
     var lastY: Int
         get() = prefs.getInt("last_y", 100)
         set(value) = prefs.edit().putInt("last_y", value).apply()
+
+    companion object {
+        const val KEY_FLOATING_OVERLAY = "floating_overlay_enabled"
+    }
 
     fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)

@@ -73,6 +73,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -85,17 +88,7 @@ import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
 
-    // Volatile field in OverlayService to check if service is running
-    private fun isServiceRunning(): Boolean {
-        // Safe check if running
-        return try {
-            val serviceClass = OverlayService::class.java
-            // We can also check if settingsManager says enabled
-            SettingsManager(this).overlayEnabled
-        } catch (e: Exception) {
-            false
-        }
-    }
+    private fun isServiceRunning(): Boolean = SettingsManager(this).monitorEnabled
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,24 +115,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val settingsManager = SettingsManager(this)
-        if (settingsManager.overlayEnabled && settingsManager.autoRecover && Settings.canDrawOverlays(this)) {
+        if (settingsManager.monitorEnabled) {
             startSpeedService()
         }
     }
 
-    private fun startSpeedService() {
-        val intent = Intent(this, OverlayService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
+    private fun startSpeedService() = OverlayService.start(this)
 
-    private fun stopSpeedService() {
-        val intent = Intent(this, OverlayService::class.java)
-        stopService(intent)
-    }
+    private fun stopSpeedService() = OverlayService.stop(this)
 }
 
 @Composable
@@ -169,7 +152,8 @@ fun DashboardScreen(
     }
 
     // Dynamic UI options mapped to settings
-    val isServiceRunning = remember { mutableStateOf(isServiceActiveCheck() && hasOverlayPermission.value) }
+    val isServiceRunning = remember { mutableStateOf(isServiceActiveCheck()) }
+    val floatingEnabled = remember { mutableStateOf(settingsManager.floatingOverlayEnabled) }
     val compactMode = remember { mutableStateOf(settingsManager.compactMode) }
     val colorScheme = remember { mutableStateOf(settingsManager.colorScheme) }
     val opacity = remember { mutableStateOf(settingsManager.opacity) }
@@ -196,10 +180,16 @@ fun DashboardScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
         hasOverlayPermission.value = Settings.canDrawOverlays(context)
-        if (hasOverlayPermission.value && settingsManager.overlayEnabled) {
-            onStartService()
-            isServiceRunning.value = true
+        if (hasOverlayPermission.value) {
+            floatingEnabled.value = true
+            settingsManager.floatingOverlayEnabled = true
         }
+    }
+
+    val requestOverlayPermission = {
+        overlayLauncher.launch(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+        )
     }
 
     // Notification Permission Launcher
@@ -213,11 +203,11 @@ fun DashboardScreen(
     LaunchedEffect(Unit) {
         while (true) {
             hasOverlayPermission.value = Settings.canDrawOverlays(context)
-            val active = isServiceActiveCheck() && hasOverlayPermission.value
-            isServiceRunning.value = active
-            if (settingsManager.overlayEnabled && settingsManager.autoRecover && hasOverlayPermission.value && !active) {
-                onStartService()
-                isServiceRunning.value = true
+            isServiceRunning.value = isServiceActiveCheck()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                hasNotificationPermission.value = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
             }
             kotlinx.coroutines.delay(1000)
         }
@@ -280,7 +270,7 @@ fun DashboardScreen(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "Real-time bandwidth status indicator",
+                        text = "Live ↓ download / ↑ upload rate in your status bar",
                         color = Color(0xFF49454F),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
@@ -313,7 +303,7 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Overlay Live Preview",
+                            text = "Live Preview",
                             color = Color(0xFF1C1B1F),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -343,10 +333,17 @@ fun DashboardScreen(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            StatusBarIconPreview(
+                                downloadBps = 1530920L,
+                                uploadBps = 94208L,
+                                useBits = useBits.value,
+                                tint = Color(0xFF1C1B1F)
+                            )
                         }
 
-                        // Previewing the exact layout Composable!
-                        Box(
+                        // Floating pill preview (only when that optional mode is on)
+                        if (floatingEnabled.value) Box(
                             modifier = Modifier.padding(end = 4.dp)
                         ) {
                             OverlayViewContent(
@@ -361,10 +358,11 @@ fun DashboardScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    val previewDlText = if (useBits.value) "12.2 Mbps" else "1.5 MB/s"
-                    val previewUlText = if (useBits.value) "753.7 kbps" else "92.0 kB/s"
+                    val previewDlText = SpeedFormatter.formatFull(1530920L, useBits.value)
+                    val previewUlText = SpeedFormatter.formatFull(94208L, useBits.value)
                     Text(
-                        text = "Interactive preview with standard network data ($previewDlText ↓, $previewUlText ↑)",
+                        text = "Status bar icon (left)" + (if (floatingEnabled.value) " and floating pill (right)" else "") +
+                            " showing $previewDlText ↓ and $previewUlText ↑",
                         color = Color(0xFF49454F),
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center
@@ -374,7 +372,7 @@ fun DashboardScreen(
 
             // Warning / Permission Alert Card if permissions are missing
             AnimatedVisibility(
-                visible = !hasOverlayPermission.value,
+                visible = floatingEnabled.value && !hasOverlayPermission.value,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -402,20 +400,14 @@ fun DashboardScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "To draw the network rate floating window on top of other applications, this app needs the 'Display over other apps' authorization.",
+                            text = "The optional floating speed pill needs the 'Display over other apps' permission. The status bar indicator works without it.",
                             color = Color(0xFF370002),
                             fontSize = 12.sp,
                             lineHeight = 16.sp
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
-                            onClick = {
-                                val intent = Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:${context.packageName}")
-                                )
-                                overlayLauncher.launch(intent)
-                            },
+                            onClick = { requestOverlayPermission() },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("grant_overlay_permission_button"),
@@ -451,7 +443,7 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Foreground Notification Permission",
+                                text = "Notification Permission Required",
                                 color = Color(0xFF1C1B1F),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
@@ -459,7 +451,7 @@ fun DashboardScreen(
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Enabling notification permissions ensures the speed monitoring service runs stably without being terminated by Android's background limits.",
+                            text = "The live speed is drawn into a notification icon, so Android must be allowed to show this app's notifications for it to appear in the status bar.",
                             color = Color(0xFF49454F),
                             fontSize = 12.sp,
                             lineHeight = 16.sp
@@ -522,13 +514,13 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = if (isServiceRunning.value) "Monitor Service Active" else "Monitor Service Inactive",
+                                text = if (isServiceRunning.value) "Speed Monitor On" else "Speed Monitor Off",
                                 color = if (isServiceRunning.value) Color(0xFF21005D) else Color(0xFF1C1B1F),
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (isServiceRunning.value) "Overlay drawing is enabled" else "Turn on to show overlay",
+                                text = if (isServiceRunning.value) "Showing live speed in the status bar" else "Turn on to show speed in the status bar",
                                 color = Color(0xFF49454F),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
@@ -540,20 +532,16 @@ fun DashboardScreen(
                         checked = isServiceRunning.value,
                         onCheckedChange = { isChecked ->
                             if (isChecked) {
-                                if (!hasOverlayPermission.value) {
-                                    // Direct to permission flow first
-                                    val intent = Intent(
-                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:${context.packageName}")
-                                    )
-                                    overlayLauncher.launch(intent)
-                                } else {
-                                    settingsManager.overlayEnabled = true
-                                    onStartService()
-                                    isServiceRunning.value = true
+                                if (!hasNotificationPermission.value &&
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                                ) {
+                                    notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
+                                settingsManager.monitorEnabled = true
+                                onStartService()
+                                isServiceRunning.value = true
                             } else {
-                                settingsManager.overlayEnabled = false
+                                settingsManager.monitorEnabled = false
                                 onStopService()
                                 isServiceRunning.value = false
                             }
@@ -600,10 +588,49 @@ fun DashboardScreen(
 
                     HorizontalDivider(color = Color(0xFFE7E0EC), thickness = 1.dp)
 
+                    // Optional floating pill
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Floating Speed Pill (optional)",
+                                color = Color(0xFF1C1B1F),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "A larger, draggable readout on top of other apps. The settings below style this pill.",
+                                color = Color(0xFF49454F),
+                                fontSize = 10.sp
+                            )
+                        }
+                        Switch(
+                            checked = floatingEnabled.value,
+                            onCheckedChange = { checked ->
+                                if (checked && !hasOverlayPermission.value) {
+                                    requestOverlayPermission()
+                                } else {
+                                    floatingEnabled.value = checked
+                                    settingsManager.floatingOverlayEnabled = checked
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = themeColor,
+                                uncheckedThumbColor = Color(0xFF79747E),
+                                uncheckedTrackColor = Color(0xFFE7E0EC)
+                            ),
+                            modifier = Modifier.testTag("floating_overlay_switch")
+                        )
+                    }
+
                     // Overlay Format (Chips)
                     Column {
                         Text(
-                            text = "Overlay Layout Style",
+                            text = "Floating Pill Layout",
                             color = Color(0xFF1C1B1F),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
@@ -704,7 +731,7 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Overlay Opacity",
+                                text = "Floating Pill Opacity",
                                 color = Color(0xFF1C1B1F),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -889,7 +916,7 @@ fun DashboardScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Revives overlay if Android terminates it or after reboot",
+                                    text = "Restarts the speed monitor if Android stops it, and after reboot",
                                     color = Color(0xFF49454F),
                                     fontSize = 10.sp
                                 )
@@ -1012,10 +1039,6 @@ fun DashboardScreen(
                                 onClick = {
                                     settingsManager.lastX = 200
                                     settingsManager.lastY = 100
-                                    if (isServiceRunning.value) {
-                                        onStopService()
-                                        onStartService()
-                                    }
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -1038,6 +1061,7 @@ fun DashboardScreen(
 
                             Button(
                                 onClick = {
+                                    settingsManager.monitorEnabled = true
                                     onStopService()
                                     onStartService()
                                     isServiceRunning.value = true
@@ -1061,7 +1085,7 @@ fun DashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    "Restart Overlay",
+                                    "Restart Monitor",
                                     color = themeColor,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
@@ -1099,9 +1123,10 @@ fun DashboardScreen(
                         )
                     }
                     Text(
-                        text = "• Drag & Position: When unlocked, you can touch and drag the speed indicator to place it anywhere (e.g. adjacent to standard status bar signals or at any edge).\n" +
-                               "• Real Network Testing: When waiting for webpages, videos, or files to load, check the live speed indicator. If the speed stays at bps/B/s or very low kbps/kB/s, your signal may be stalled or dropping packets, even if Wi-Fi/LTE shows full bars.\n" +
-                               "• Auto-Recovery: The app actively protects itself from background termination. If Android stops the process due to low memory or when swiped, it automatically resurrects the overlay service.",
+                        text = "• Reading the icon: the top row (▼) is download, the bottom row (▲) is upload. 'k' = kilobits/s, 'M' = megabits/s (or kB/s and MB/s in bytes mode). Pull down the notification shade for the full figures.\n" +
+                               "• Is anything loading? If a page or file is 'loading' but download stays at 0k or a few k, nothing is actually arriving: the Wi-Fi or cellular link is stalled even if it shows full bars. Try toggling Wi-Fi off to fall back to mobile data, or vice versa.\n" +
+                               "• Battery friendly: sampling pauses while the screen is off. The rate is measured from the phone's own traffic counters; no data is sent anywhere.\n" +
+                               "• Floating pill: when enabled and unlocked, drag it anywhere (e.g. right under the status bar).",
                         color = Color(0xFF49454F),
                         fontSize = 11.sp,
                         lineHeight = 16.sp
@@ -1121,4 +1146,18 @@ fun DashboardScreen(
             )
         }
     }
+}
+
+/** Renders the exact bitmap used for the status bar icon, tinted like the system would. */
+@Composable
+fun StatusBarIconPreview(downloadBps: Long, uploadBps: Long, useBits: Boolean, tint: Color) {
+    val bitmap = remember(downloadBps, uploadBps, useBits) {
+        StatusBarIconRenderer().render(downloadBps, uploadBps, useBits).asImageBitmap()
+    }
+    Image(
+        bitmap = bitmap,
+        contentDescription = "Status bar speed icon preview",
+        colorFilter = ColorFilter.tint(tint),
+        modifier = Modifier.size(24.dp)
+    )
 }
